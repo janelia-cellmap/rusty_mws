@@ -36,9 +36,9 @@ def blockwise_generate_mutex_fragments(
     n_chunk_write: int = 2,
     lr_bias_ratio: float = -0.175,
     adjacent_edge_bias: float = -0.4,  # bias towards merging
-    mongo_port: int = 27017,
-    db_name: str = "seg",
     use_mongo: bool = True,
+    db_host: Optional[str] = "mongodb://localhost:27017",
+    db_name: str = "mutex_watershed",
 ) -> bool:
     """Generates MWS fragments and saves nodes & weights in a RAG.
 
@@ -94,14 +94,14 @@ def blockwise_generate_mutex_fragments(
         adjacent_edge_bias (``float``):
             Weight base at which to bias adjacent edges.
 
-        mongo_port (``integer``):
-            Port number where a MongoDB server instance is listening.
+        use_mongo (``bool``):
+            Flag denoting whether to use a MongoDB RAG or a file-based NetworkX RAG.
+
+        db_host (``string``):
+            Hostname of the MongoDB server to use at the RAG, including port number.
 
         db_name (``string``):
             Name of the specified MongoDB database to use at the RAG.
-
-        use_mongo (``bool``):
-            Flag denoting whether to use a MongoDB RAG or a file-based NetworkX RAG.
 
         Returns:
             ``bool``:
@@ -166,15 +166,13 @@ def blockwise_generate_mutex_fragments(
     if not training:
         if use_mongo:
             # open RAG DB
-            db_host: str = f"mongodb://localhost:{mongo_port}"
+            # mongo_drop = pymongo.MongoClient(db_host)[db_name]
+            # collection_names = mongo_drop.list_collection_names()
 
-            mongo_drop = pymongo.MongoClient(db_host)[db_name]
-            collection_names = mongo_drop.list_collection_names()
-
-            for collection_name in collection_names:
-                if sample_name in collection_name:
-                    logger.info(f"Dropping {collection_name}")
-                    mongo_drop[collection_name].drop()
+            # for collection_name in collection_names:
+            #     if sample_name in collection_name:
+            #         logger.info(f"Dropping {collection_name}")
+            #         mongo_drop[collection_name].drop()
 
             logger.info("Opening MongoDBGraphProvider...")
             rag_provider = graphs.MongoDbGraphProvider(

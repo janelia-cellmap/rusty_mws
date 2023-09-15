@@ -85,9 +85,8 @@ class PostProcessor:
             Weight base at which to bias adjacent edges.
             Default is -0.4.
 
-        mongo_port (int, optional):
-            Port number where a MongoDB server instance is listening.
-            Default is 27017.
+        db_host (str, optional):
+            Hostname of the MongoDB instance to use at the RAG, including port number.
 
         db_name (str, optional):
             Name of the specified MongoDB database to use at the RAG.
@@ -145,6 +144,10 @@ class PostProcessor:
             Number of chunks to write for each Daisy block in the LUT extraction task.
             Default is 1.
 
+        use_mongo (bool, optional):
+            Flag denoting whether to use a MongoDB RAG or a file-based NetworkX RAG.
+            Default is True.
+
     """
 
     def __init__(
@@ -166,8 +169,8 @@ class PostProcessor:
         n_chunk_write_frags: Optional[int] = 2,
         lr_bias_ratio: Optional[float] = -0.175,
         adjacent_edge_bias: Optional[float] = -0.4,
-        mongo_port: Optional[int] = 27017,
-        db_name: Optional[str] = "seg",
+        db_host: Optional[str] = "mongodb://localhost:27017",
+        db_name: Optional[str] = "mutex_watershed",
         seeded: Optional[bool] = True,
         nworkers_correct: Optional[int] = 25,
         n_chunk_write_correct: Optional[int] = 1,
@@ -214,7 +217,7 @@ class PostProcessor:
         self.merge_function: str = merge_function
 
         # MongoDB vars
-        self.mongo_port: int = mongo_port
+        self.db_host: str = db_host
         self.db_name: str = db_name
         self.sample_name: str = sample_name
         self.use_mongo: bool = use_mongo
@@ -284,7 +287,8 @@ class PostProcessor:
                 n_chunk_write=self.n_chunk_write_frags,
                 lr_bias_ratio=self.lr_bias_ratio,
                 adjacent_edge_bias=self.adjacent_edge_bias,
-                mongo_port=self.mongo_port,
+                use_mongo=self.use_mongo,
+                db_host=self.db_host,
                 db_name=self.db_name,
             )
         else:
@@ -306,7 +310,8 @@ class PostProcessor:
                 n_chunk_write=self.n_chunk_write_frags,
                 lr_bias_ratio=self.lr_bias_ratio,
                 adjacent_edge_bias=self.adjacent_edge_bias,
-                mongo_port=self.mongo_port,
+                use_mongo=self.use_mongo,
+                db_host=self.db_host,
                 db_name=self.db_name,
             )
 
@@ -366,9 +371,9 @@ class PostProcessor:
             n_chunk_write=self.n_chunk_write_frags,
             lr_bias_ratio=self.lr_bias_ratio,
             adjacent_edge_bias=self.adjacent_edge_bias,
-            mongo_port=self.mongo_port,
-            db_name=self.db_name,
             use_mongo=self.use_mongo,
+            db_host=self.db_host,
+            db_name=self.db_name,
         )
 
         success = success & blockwise_generate_supervoxel_edges(
@@ -382,9 +387,9 @@ class PostProcessor:
             nworkers=self.nworkers_supervox,
             merge_function=self.merge_function,
             lr_bias_ratio=self.lr_bias_ratio,
-            mongo_port=self.mongo_port,
-            db_name=self.db_name,
             use_mongo=self.use_mongo,
+            db_host=self.db_host,
+            db_name=self.db_name,
         )
 
         success = success & global_mutex_agglomeration(
@@ -394,9 +399,9 @@ class PostProcessor:
             merge_function=self.merge_function,
             adj_bias=self.adj_bias,
             lr_bias=self.lr_bias,
-            mongo_port=self.mongo_port,
-            db_name=self.db_name,
             use_mongo=self.use_mongo,
+            db_host=self.db_host,
+            db_name=self.db_name,
         )
 
         success = success & extract_segmentation(
@@ -445,7 +450,7 @@ class PostProcessor:
             seeds_file=self.seeds_file,
             seeds_dataset=self.seeds_dataset,
             sample_name=self.sample_name,
-            db_host=f"mongodb://localhost:{self.mongo_port}",
+            db_host=self.db_host,
             db_name=self.db_name,
             merge_function=self.merge_function,
             adj_bias_range=adj_bias_range,
