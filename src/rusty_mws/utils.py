@@ -36,38 +36,3 @@ def filter_fragments(
     )
     replace: np.ndarray = np.zeros_like(filtered_fragments)
     replace_values(fragments_data, filtered_fragments, replace, inplace=True)
-
-
-# neighborhood offset values
-neighborhood: list[list[int]] = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-    [2, 0, 0],
-    [0, 2, 0],
-    [0, 0, 2],
-    [4, 0, 0],
-    [0, 4, 0],
-    [0, 0, 4],
-    [8, 0, 0],
-    [0, 8, 0],
-    [0, 0, 8],
-    [0, -3, -7],
-    [0, -6, -6],
-    [0, -7, -3],
-    [0, -7, 3],
-    [0, -6, 6],
-    [0, -3, 7],
-    [-3, 0, -7],
-    [-6, 0, -6],
-    [-7, 0, -3],
-    [-7, 0, 3],
-    [-6, 0, 6],
-    [-3, 0, 7],
-    [-3, -7, 0],
-    [-6, -6, 0],
-    [-7, -3, 0],
-    [-7, 3, 0],
-    [-6, 6, 0],
-    [-3, 7, 0],
-]

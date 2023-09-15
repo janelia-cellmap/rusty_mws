@@ -14,7 +14,6 @@ from funlib.segment.arrays import relabel
 import pymongo
 
 from ..utils import filter_fragments
-from ..utils import neighborhood
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -23,6 +22,7 @@ def blockwise_generate_mutex_fragments(
     sample_name: str,
     affs_file: str,
     affs_dataset: str,
+    neighborhood: list[list[int]],
     fragments_file: str,
     fragments_dataset: str,
     context: Coordinate,
@@ -36,7 +36,6 @@ def blockwise_generate_mutex_fragments(
     n_chunk_write: int = 2,
     lr_bias_ratio: float = -0.175,
     adjacent_edge_bias: float = -0.4,  # bias towards merging
-    neighborhood_length: int = 12,
     mongo_port: int = 27017,
     db_name: str = "seg",
     use_mongo: bool = True,
@@ -52,6 +51,9 @@ def blockwise_generate_mutex_fragments(
 
         affs_dataset (``str``):
             The name of the affinities dataset in the affs_file to read from.
+
+        neighborhood (``list[list[int]]``):
+            A list of lists containing the neighborhood offsets to use for MWS.
 
         fragments_file (``str``):
             Path (relative or absolute) to the zarr file to write fragments to.
@@ -81,7 +83,7 @@ def blockwise_generate_mutex_fragments(
             The name of the seeds dataset in the seeds file to read from.
 
         training (``bool``):
-            Training flag to denote wether or not to storge fragment data in MongoDB. When ``false``, used for training-only runs on SLURM clusters.
+            Training flag to denote wether or not to store fragment data in MongoDB. When ``false``, used for training-only runs on SLURM clusters.
 
         n_chunk_write (``integer``):
             Number of chunks to write for each Daisy block.
@@ -91,9 +93,6 @@ def blockwise_generate_mutex_fragments(
 
         adjacent_edge_bias (``float``):
             Weight base at which to bias adjacent edges.
-
-        neighborhood_length (``integer``):
-            Number of neighborhood offsets to use, default is 12.
 
         mongo_port (``integer``):
             Port number where a MongoDB server instance is listening.

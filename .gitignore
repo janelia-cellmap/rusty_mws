@@ -170,3 +170,6 @@ build/
 data/
 rusty_mws.egg_info/
 test.py
+
+# VSCode
+.vscode/

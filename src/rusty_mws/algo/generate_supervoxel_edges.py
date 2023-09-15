@@ -18,14 +18,14 @@ logger: logging.Logger = logging.getLogger(__name__)
 def blockwise_generate_supervoxel_edges(
     sample_name: str,
     affs_file: str,
-    affs_dataset,
+    affs_dataset: str,
+    neighborhood: list[list[int]],
     fragments_file: str,
     fragments_dataset: str,
     context: Coordinate,
     nworkers: int = 20,
     merge_function: str = "mwatershed",
     lr_bias_ratio: float = -0.175,
-    neighborhood_length: int = 12,
     mongo_port: int = 27017,
     db_name: str = "seg",
     use_mongo: bool = True,
@@ -41,6 +41,9 @@ def blockwise_generate_supervoxel_edges(
 
         affs_dataset (``str``):
             The name of the affinities dataset in the affs_file to read from.
+
+        neighborhood (``list[list[int]]``):
+            A list of lists containing the neighborhood offsets to use for the MWS algorithm.
 
         fragments_file (``str``):
             Path (relative or absolute) to the zarr file containing fragments.
@@ -59,9 +62,6 @@ def blockwise_generate_supervoxel_edges(
 
         lr_bias_ratio (``float``):
             Ratio at which to tweak the lr shift in offsets.
-
-        neighborhood_length (``integer``):
-            Number of neighborhood offsets to use, default is 12.
 
         mongo_port (``integer``):
             Port number where a MongoDB server instance is listening.
@@ -167,7 +167,9 @@ def blockwise_generate_supervoxel_edges(
         # logger.debug("fragments num: %d", n)
 
         # convert affs to float32 ndarray with values between 0 and 1
-        offsets: list[list[int]] = neighborhood[:neighborhood_length]
+        offsets: list[
+            list[int]
+        ] = neighborhood  # TODO: fix this (i.e. make offsets or neighborhood everywhere)
 
         affs = affs.to_ndarray()
         if affs.dtype == np.uint8:
