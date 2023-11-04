@@ -1,14 +1,15 @@
 import logging
 import os
 import time
+from typing import Optional
 
 import numpy as np
 import mwatershed as mws
 from funlib.geometry import Roi
 from funlib.persistence import open_ds, graphs, Array
 
-
 logger: logging.Logger = logging.getLogger(__name__)
+logging.getLogger().setLevel(logging.DEBUG)
 
 
 def global_mutex_agglomeration(
@@ -109,7 +110,7 @@ def global_mutex_agglomeration(
 
     print("Complete RAG contains %d nodes, %d edges" % (len(nodes), len(edges)))
 
-    out_dir: str = os.path.join(fragments_file, "luts_full")
+    out_dir: str = os.path.join(fragments_file, f"{fragments_dataset}_luts_full")
 
     os.makedirs(out_dir, exist_ok=True)
 
@@ -124,6 +125,9 @@ def global_mutex_agglomeration(
         adj_bias=adj_bias,
         lr_bias=lr_bias,
     )
+
+    if use_mongo:
+        graph_provider.client.close()
 
     print("Created and stored lookup tables in %.3fs" % (time.time() - start))
     return True

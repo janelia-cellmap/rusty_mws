@@ -10,9 +10,11 @@ import daisy
 from funlib.geometry import Coordinate, Roi
 from funlib.persistence import open_ds, Array, graphs
 from ..utils import neighborhood
+from typing import Optional
 
 
 logger: logging.Logger = logging.getLogger(__name__)
+logging.getLogger().setLevel(logging.DEBUG)
 
 
 def blockwise_generate_supervoxel_edges(
@@ -26,7 +28,7 @@ def blockwise_generate_supervoxel_edges(
     nworkers: int = 20,
     merge_function: str = "mwatershed",
     lr_bias_ratio: float = -0.175,
-    mongo_port: int = 27017,
+    db_host: Optional[str] = "mongodb://localhost:27017",
     db_name: str = "seg",
     use_mongo: bool = True,
 ) -> bool:
@@ -63,8 +65,8 @@ def blockwise_generate_supervoxel_edges(
         lr_bias_ratio (``float``):
             Ratio at which to tweak the lr shift in offsets.
 
-        mongo_port (``integer``):
-            Port number where a MongoDB server instance is listening.
+        db_host (``string``):
+            Hostname of the MongoDB server to use at the RAG, including port number.
 
         db_name (``string``):
             Name of the specified MongoDB database to use at the RAG.
@@ -95,7 +97,6 @@ def blockwise_generate_supervoxel_edges(
 
     # open RAG DB
     if use_mongo:
-        db_host: str = f"mongodb://localhost:{mongo_port}"
 
         logging.info("Opening MongoDBGraphProvider...")
         rag_provider = graphs.MongoDbGraphProvider(
@@ -120,8 +121,8 @@ def blockwise_generate_supervoxel_edges(
     logging.info("Graph Provider opened")
 
     # open block done DB
-    client = pymongo.MongoClient(db_host)
-    db = client[db_name]
+    mongo_client = pymongo.MongoClient(db_host)
+    db = mongo_client[db_name]
     completed_collection_name: str = f"{sample_name}_supervox_blocks_completed"
     completed_collection = db[completed_collection_name]
 
@@ -351,4 +352,7 @@ def blockwise_generate_supervoxel_edges(
 
     # run task blockwise
     ret: bool = daisy.run_blockwise([task])
+    if use_mongo:
+        mongo_client.close()
+        rag_provider.client.close()
     return ret

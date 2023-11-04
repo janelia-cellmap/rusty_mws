@@ -4,6 +4,7 @@ import os
 import shutil
 import numpy as np
 from scipy.ndimage import gaussian_filter, measurements
+from typing import Optional
 
 import daisy
 import mwatershed as mws
@@ -17,6 +18,7 @@ from ..utils import filter_fragments
 
 logger: logging.Logger = logging.getLogger(__name__)
 
+logging.getLogger().setLevel(logging.DEBUG)
 
 def blockwise_generate_mutex_fragments(
     sample_name: str,
@@ -167,6 +169,7 @@ def blockwise_generate_mutex_fragments(
     else:
         seeds = None
 
+    mongo_client = None
     if not training:
         if use_mongo:
             # open RAG DB
@@ -402,4 +405,8 @@ def blockwise_generate_mutex_fragments(
     logger.info("Running task blockwise . . .")
     # run task blockwise
     ret: bool = daisy.run_blockwise(tasks=[task])
+    if mongo_client:
+        rag_provider.client.close()
+        mongo_client.close()
+
     return ret
