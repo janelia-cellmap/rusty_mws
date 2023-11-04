@@ -49,7 +49,7 @@ def extract_segmentation(
             The number of unique segment IDs in the final segmentation.
     """
 
-    lut_dir: str = os.path.join(fragments_file, "luts_full")
+    lut_dir: str = os.path.join(fragments_file, f"{fragments_dataset}_luts_full")
 
     fragments: Array = open_ds(fragments_file, fragments_dataset)
 
@@ -123,13 +123,13 @@ def segment_in_block(block: daisy.Block, segmentation, fragments, lut) -> bool:
     fragments: np.ndarray = fragments.to_ndarray(block.read_roi)
 
     # replace values, write to empty array
-    relabelled: np.ndarray = np.zeros_like(fragments)
+    relabelled: np.ndarray = fragments.copy()
     old_vals: np.ndarray = np.array(lut[0], dtype=np.uint64)
     new_vals: np.ndarray = np.array(lut[1], dtype=np.uint64)
     assert old_vals.dtype == new_vals.dtype == fragments.dtype
 
     logging.info("Relabelling . . .")
-    relabelled: np.ndarray = replace_values(
+    replace_values(
         fragments, old_vals, new_vals, out_array=relabelled
     )
 
