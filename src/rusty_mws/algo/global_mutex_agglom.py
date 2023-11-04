@@ -10,6 +10,7 @@ from funlib.persistence import open_ds, graphs, Array
 
 logger: logging.Logger = logging.getLogger(__name__)
 
+
 def global_mutex_agglomeration(
     sample_name: str,
     fragments_file: str,

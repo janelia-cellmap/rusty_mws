@@ -18,6 +18,7 @@ from ..utils import filter_fragments
 
 logger: logging.Logger = logging.getLogger(__name__)
 
+
 def blockwise_generate_mutex_fragments(
     sample_name: str,
     affs_file: str,
