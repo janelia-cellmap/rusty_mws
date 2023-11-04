@@ -75,6 +75,8 @@ def extract_segmentation(
         voxel_size=voxel_size,
         dtype=np.uint64,
         write_roi=write_roi,
+        write_size=chunk_shape * voxel_size,
+        force_exact_write_size=True,
         delete=True,
     )
 
