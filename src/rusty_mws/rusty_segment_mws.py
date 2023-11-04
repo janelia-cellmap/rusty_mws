@@ -148,6 +148,9 @@ class PostProcessor:
             Flag denoting whether to use a MongoDB RAG or a file-based NetworkX RAG.
             Default is True.
 
+        log_dir (str, optional):
+            Directory for daisy logs.
+            Default is None, meaning daisy's default ./daisy_logs will be used.
     """
 
     def __init__(
@@ -185,7 +188,11 @@ class PostProcessor:
         nworkers_lut: Optional[int] = 25,
         n_chunk_write_lut: Optional[int] = 1,
         use_mongo: Optional[bool] = True,
+        log_dir: Optional[str] = None
     ) -> None:
+        if log_dir:
+            daisy.logging.set_log_basedir(log_dir)
+
         # dataset vars
         self.affs_file: str = affs_file
         self.affs_dataset: str = affs_dataset
@@ -234,7 +241,7 @@ class PostProcessor:
         # fragment weight and neighborhood vars
         self.lr_bias_ratio: float = lr_bias_ratio
         self.adjacent_edge_bias: float = adjacent_edge_bias
-        self.neighborhood_length: int = neighborhood_length
+        #self.neighborhood_length: int = neighborhood_length
 
         # skeleton correction vars
         self.erode_iterations: int = erode_iterations
@@ -414,7 +421,7 @@ class PostProcessor:
             n_chunk_write=self.n_chunk_write_lut,
         )
 
-        return True
+        return success
 
     def optimize_pred_segmentation(
         self,
