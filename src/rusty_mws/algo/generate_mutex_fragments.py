@@ -245,7 +245,7 @@ def blockwise_generate_mutex_fragments(
         logger.info("block write roi begin: %s", block.write_roi.get_begin())
         logger.info("block write roi shape: %s", block.write_roi.get_shape())
 
-        offsets: list[list[int]] = neighborhood[:neighborhood_length]
+        offsets: list[list[int]] = neighborhood #[:neighborhood_length]
 
         these_affs: Array = affs.intersect(block.read_roi)
         these_affs.materialize()
