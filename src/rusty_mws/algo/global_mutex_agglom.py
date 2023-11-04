@@ -9,8 +9,6 @@ from funlib.geometry import Roi
 from funlib.persistence import open_ds, graphs, Array
 
 logger: logging.Logger = logging.getLogger(__name__)
-logging.getLogger().setLevel(logging.DEBUG)
-
 
 def global_mutex_agglomeration(
     sample_name: str,

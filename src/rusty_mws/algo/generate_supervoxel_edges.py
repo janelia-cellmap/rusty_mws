@@ -14,8 +14,6 @@ from typing import Optional
 
 
 logger: logging.Logger = logging.getLogger(__name__)
-logging.getLogger().setLevel(logging.DEBUG)
-
 
 def blockwise_generate_supervoxel_edges(
     sample_name: str,
