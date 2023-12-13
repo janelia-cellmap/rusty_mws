@@ -96,7 +96,6 @@ def blockwise_generate_supervoxel_edges(
 
     # open RAG DB
     if use_mongo:
-
         logging.info("Opening MongoDBGraphProvider...")
         rag_provider = graphs.MongoDbGraphProvider(
             db_name=db_name,
@@ -347,6 +346,7 @@ def blockwise_generate_supervoxel_edges(
         write_roi=write_roi,
         process_function=generate_super_voxel_edges_worker,
         num_workers=nworkers,
+        fit="shrink",
     )
 
     # run task blockwise
