@@ -382,7 +382,7 @@ class PostProcessor:
             db_host=self.db_host,
             db_name=self.db_name,
         )
-
+        logger.info(f"blockwise generate mutex fragments {success}")
         success = success & blockwise_generate_supervoxel_edges(
             sample_name=self.sample_name,
             affs_file=self.affs_file,
@@ -398,7 +398,7 @@ class PostProcessor:
             db_host=self.db_host,
             db_name=self.db_name,
         )
-
+        logger.info(f"blockwise_generate_supervoxel_edges {success}")
         success = success & global_mutex_agglomeration(
             sample_name=self.sample_name,
             fragments_file=self.fragments_file,
@@ -410,7 +410,7 @@ class PostProcessor:
             db_host=self.db_host,
             db_name=self.db_name,
         )
-
+        logger.info(f"global_mutex_agglomeration {success}")
         success = success & extract_segmentation(
             fragments_file=self.fragments_file,
             fragments_dataset=self.fragments_dataset,
@@ -420,7 +420,7 @@ class PostProcessor:
             merge_function=self.merge_function,
             n_chunk_write=self.n_chunk_write_lut,
         )
-
+        logger.info(f"extract_segmentation {success}")
         return success
 
     def optimize_pred_segmentation(
