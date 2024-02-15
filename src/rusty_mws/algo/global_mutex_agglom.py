@@ -98,8 +98,11 @@ def global_mutex_agglomeration(
     if graph.number_of_nodes == 0:
         print("No nodes found in roi %s" % roi)
         return
+
     nodes: np.ndarray = np.array(graph.nodes)
-    edges: np.ndarray = np.stack(list(graph.edges), axis=0)
+    edges: np.ndarray = (
+        np.stack(list(graph.edges), axis=0) if graph.edges else np.array([])
+    )
     adj_scores: np.ndarray = np.array(
         [graph.edges[tuple(e)]["adj_weight"] for e in edges]
     ).astype(np.float32)
@@ -181,9 +184,12 @@ def segment(
         reverse=True,
     )
     edges = [(bool(aff > 0), u, v) for aff, u, v in edges]
-    lut = mws.cluster(edges)
-    inputs, outputs = zip(*lut)
-
+    if edges:
+        lut = mws.cluster(edges)
+        inputs, outputs = zip(*lut)
+    else:
+        inputs = np.array([], dtype=np.uint64)
+        outputs = np.array([], dtype=np.uint64)
     start: float = time.time()
     print("%.3fs" % (time.time() - start))
 
