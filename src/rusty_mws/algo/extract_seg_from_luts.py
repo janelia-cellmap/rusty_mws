@@ -113,7 +113,7 @@ def extract_segmentation(
         )
 
     logging.info(f"Took {time.time() - start} seconds to extract segmentation from LUT")
-    return num_segments
+    return True
 
 
 def segment_in_block(block: daisy.Block, segmentation, fragments, lut) -> bool:
