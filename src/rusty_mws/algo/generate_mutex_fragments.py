@@ -229,6 +229,7 @@ def blockwise_generate_mutex_fragments(
         block: daisy.Block,
         affs=affs,
         seeds=seeds,
+        mask=mask,
         context=context,
         fragments_out=fragments_ds,
         rag_provider=rag_provider,
@@ -247,7 +248,13 @@ def blockwise_generate_mutex_fragments(
         logger.info("block write roi begin: %s", block.write_roi.get_begin())
         logger.info("block write roi shape: %s", block.write_roi.get_shape())
 
-        offsets: list[list[int]] = neighborhood #[:neighborhood_length]
+        offsets: list[list[int]] = neighborhood  # [:neighborhood_length]
+
+        if mask:
+            this_mask = mask.intersect(block.write_roi.snap_to_grid(mask.voxel_size))
+            this_mask.materialize()
+            if not np.any(this_mask):
+                return True
 
         these_affs: Array = affs.intersect(block.read_roi)
         these_affs.materialize()
@@ -285,9 +292,11 @@ def blockwise_generate_mutex_fragments(
         logger.info("Shifting affs")
         shift: np.ndarray = np.array(
             [
-                adjacent_edge_bias
-                if max(offset) <= 1
-                else np.linalg.norm(offset) * lr_bias_ratio
+                (
+                    adjacent_edge_bias
+                    if max(offset) <= 1
+                    else np.linalg.norm(offset) * lr_bias_ratio
+                )
                 for offset in offsets
             ]
         ).reshape((-1, *((1,) * (len(these_affs.data.shape) - 1))))

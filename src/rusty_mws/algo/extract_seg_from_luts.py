@@ -16,6 +16,8 @@ def extract_segmentation(
     fragments_dataset: str,
     seg_file: str,
     seg_dataset: str,
+    mask_file=None,
+    mask_dataset=None,
     nworkers: int = 20,
     merge_function: str = "mwatershed",
     n_chunk_write: int = 1,
@@ -48,6 +50,10 @@ def extract_segmentation(
         ``integer``:
             The number of unique segment IDs in the final segmentation.
     """
+    if mask_file is not None:
+        mask: Array = open_ds(mask_file, mask_dataset, mode="r")
+    else:
+        mask = None
 
     lut_dir: str = os.path.join(fragments_file, f"{fragments_dataset}_luts_full")
 
@@ -100,7 +106,7 @@ def extract_segmentation(
         total_roi,
         read_roi,
         write_roi,
-        lambda b: segment_in_block(b, segmentation, fragments, lut),
+        lambda b: segment_in_block(b, segmentation, fragments, lut, mask),
         fit="shrink",
         num_workers=nworkers,
     )
@@ -116,8 +122,15 @@ def extract_segmentation(
     return True
 
 
-def segment_in_block(block: daisy.Block, segmentation, fragments, lut) -> bool:
+def segment_in_block(
+    block: daisy.Block, segmentation, fragments, lut, mask=None
+) -> bool:
     logging.info("Copying fragments to memory...")
+    if mask:
+        this_mask = mask.intersect(block.write_roi.snap_to_grid(mask.voxel_size))
+        this_mask.materialize()
+        if not np.any(this_mask):
+            return True
 
     # load fragments
     fragments: np.ndarray = fragments.to_ndarray(block.read_roi)
@@ -129,9 +142,7 @@ def segment_in_block(block: daisy.Block, segmentation, fragments, lut) -> bool:
     assert old_vals.dtype == new_vals.dtype == fragments.dtype
 
     logging.info("Relabelling . . .")
-    replace_values(
-        fragments, old_vals, new_vals, out_array=relabelled
-    )
+    replace_values(fragments, old_vals, new_vals, out_array=relabelled)
 
     segmentation[block.write_roi] = relabelled
     return True

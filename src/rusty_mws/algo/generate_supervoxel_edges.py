@@ -24,6 +24,8 @@ def blockwise_generate_supervoxel_edges(
     fragments_file: str,
     fragments_dataset: str,
     context: Coordinate,
+    mask_file: str = None,
+    mask_dataset: str = None,
     nworkers: int = 20,
     merge_function: str = "mwatershed",
     lr_bias_ratio: float = -0.175,
@@ -80,6 +82,11 @@ def blockwise_generate_supervoxel_edges(
     logging.info("Reading affs and fragments")
 
     affs: Array = open_ds(affs_file, affs_dataset, mode="r")
+    if mask_file is not None:
+        logger.info("Reading mask from %s", mask_file)
+        mask: Array = open_ds(mask_file, mask_dataset, mode="r")
+    else:
+        mask = None
 
     chunk_shape: tuple = affs.chunk_shape[affs.n_channel_dims :]
 
@@ -129,6 +136,7 @@ def blockwise_generate_supervoxel_edges(
         block: daisy.Block,
         affs=affs,
         fragments=fragments,
+        mask=mask,
         rag_provider=rag_provider,
         completed_collection=completed_collection,
     ) -> tuple:
@@ -143,6 +151,12 @@ def blockwise_generate_supervoxel_edges(
         logger.info("block read roi shape: %s", block.read_roi.get_shape())
         logger.info("block write roi begin: %s", block.write_roi.get_begin())
         logger.info("block write roi shape: %s", block.write_roi.get_shape())
+
+        if mask:
+            this_mask = mask.intersect(block.write_roi.snap_to_grid(mask.voxel_size))
+            this_mask.materialize()
+            if not np.any(this_mask):
+                return True
 
         # get the sub-{affs, fragments, graph} to work on
         affs = affs.intersect(block.read_roi)
@@ -166,9 +180,9 @@ def blockwise_generate_supervoxel_edges(
         # logger.debug("fragments num: %d", n)
 
         # convert affs to float32 ndarray with values between 0 and 1
-        offsets: list[
-            list[int]
-        ] = neighborhood  # TODO: fix this (i.e. make offsets or neighborhood everywhere)
+        offsets: list[list[int]] = (
+            neighborhood  # TODO: fix this (i.e. make offsets or neighborhood everywhere)
+        )
 
         affs = affs.to_ndarray()
         if affs.dtype == np.uint8:

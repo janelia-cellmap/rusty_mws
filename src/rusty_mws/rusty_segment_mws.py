@@ -188,7 +188,7 @@ class PostProcessor:
         nworkers_lut: Optional[int] = 25,
         n_chunk_write_lut: Optional[int] = 1,
         use_mongo: Optional[bool] = True,
-        log_dir: Optional[str] = None
+        log_dir: Optional[str] = None,
     ) -> None:
         if log_dir:
             daisy.logging.set_log_basedir(log_dir)
@@ -241,7 +241,7 @@ class PostProcessor:
         # fragment weight and neighborhood vars
         self.lr_bias_ratio: float = lr_bias_ratio
         self.adjacent_edge_bias: float = adjacent_edge_bias
-        #self.neighborhood_length: int = neighborhood_length
+        # self.neighborhood_length: int = neighborhood_length
 
         # skeleton correction vars
         self.erode_iterations: int = erode_iterations
@@ -391,6 +391,8 @@ class PostProcessor:
             fragments_file=self.fragments_file,
             fragments_dataset=self.fragments_dataset,
             context=self.context,
+            mask_file=self.mask_file,
+            mask_dataset=self.mask_dataset,
             nworkers=self.nworkers_supervox,
             merge_function=self.merge_function,
             lr_bias_ratio=self.lr_bias_ratio,
