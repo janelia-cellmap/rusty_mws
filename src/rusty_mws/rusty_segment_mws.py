@@ -26,9 +26,8 @@ class PostProcessor:
         affs_dataset (str):
             The name of the affinities dataset in the affs_file to read from.
 
-        context (daisy.Coordinate, optional):
-            A coordinate object (3-dimensional) denoting how much contextual space to grow for the total volume ROI.
-            Defaults to a Coordinate of the maximum absolute value of the neighborhood if ``None``.
+        neighborhood (list[list[int]], optional):
+            A list of lists denoting the offsets used during affinity prediction.
 
         sample_name (str, optional):
             A string containing the sample name (run name of the experiment) to denote for the MongoDB collection_name.
@@ -86,13 +85,8 @@ class PostProcessor:
             Weight base at which to bias adjacent edges.
             Default is -0.4.
 
-        neighborhood_length (int, optional):
-            Number of neighborhood offsets to use, default is 8.
-            Default is 12.
-
-        mongo_port (int, optional):
-            Port number where a MongoDB server instance is listening.
-            Default is 27017.
+        db_host (str, optional):
+            Hostname of the MongoDB instance to use at the RAG, including port number.
 
         db_name (str, optional):
             Name of the specified MongoDB database to use at the RAG.
@@ -150,15 +144,20 @@ class PostProcessor:
             Number of chunks to write for each Daisy block in the LUT extraction task.
             Default is 1.
 
-        n_steps (int, optional):
-            Number of steps to complete in the full MWS segmentation pipeline.
+        use_mongo (bool, optional):
+            Flag denoting whether to use a MongoDB RAG or a file-based NetworkX RAG.
+            Default is True.
+
+        log_dir (str, optional):
+            Directory for daisy logs.
+            Default is None, meaning daisy's default ./daisy_logs will be used.
     """
 
     def __init__(
         self,
         affs_file: str,
         affs_dataset: str,
-        context: Optional[Coordinate] = None,
+        neighborhood: list[list[int]],
         sample_name: Optional[str] = None,
         fragments_file: Optional[str] = "",
         fragments_dataset: Optional[str] = "frags",
@@ -173,9 +172,8 @@ class PostProcessor:
         n_chunk_write_frags: Optional[int] = 2,
         lr_bias_ratio: Optional[float] = -0.175,
         adjacent_edge_bias: Optional[float] = -0.4,
-        neighborhood_length: Optional[int] = 12,
-        mongo_port: Optional[int] = 27017,
-        db_name: Optional[str] = "seg",
+        db_host: Optional[str] = "mongodb://localhost:27017",
+        db_name: Optional[str] = "mutex_watershed",
         seeded: Optional[bool] = True,
         nworkers_correct: Optional[int] = 25,
         n_chunk_write_correct: Optional[int] = 1,
@@ -189,12 +187,16 @@ class PostProcessor:
         merge_function: Optional[str] = "mwatershed",
         nworkers_lut: Optional[int] = 25,
         n_chunk_write_lut: Optional[int] = 1,
-        n_steps: Optional[int] = 4,
         use_mongo: Optional[bool] = True,
+        log_dir: Optional[str] = None,
     ) -> None:
+        if log_dir:
+            daisy.logging.set_log_basedir(log_dir)
+
         # dataset vars
         self.affs_file: str = affs_file
         self.affs_dataset: str = affs_dataset
+        self.neighborhood = neighborhood
 
         if fragments_file == "":
             self.fragments_file = affs_file
@@ -215,19 +217,14 @@ class PostProcessor:
         self.mask_dataset: str = mask_dataset
 
         # dataset processing vars
-        if context is not None:
-            self.context: Coordinate = context
-        else:
-            self.context: Coordinate = Coordinate(
-                np.max(a=np.abs(neighborhood[:neighborhood_length]), axis=0)
-            )
+        self.context: Coordinate = Coordinate(np.abs(self.neighborhood).max(axis=0))
 
         self.filter_val: float = filter_val
         self.seeded: bool = seeded
         self.merge_function: str = merge_function
 
         # MongoDB vars
-        self.mongo_port: int = mongo_port
+        self.db_host: str = db_host
         self.db_name: str = db_name
         self.sample_name: str = sample_name
         self.use_mongo: bool = use_mongo
@@ -244,7 +241,7 @@ class PostProcessor:
         # fragment weight and neighborhood vars
         self.lr_bias_ratio: float = lr_bias_ratio
         self.adjacent_edge_bias: float = adjacent_edge_bias
-        self.neighborhood_length: int = neighborhood_length
+        # self.neighborhood_length: int = neighborhood_length
 
         # skeleton correction vars
         self.erode_iterations: int = erode_iterations
@@ -255,9 +252,6 @@ class PostProcessor:
         # MWS agglom vars
         self.adj_bias: float = adj_bias
         self.lr_bias: float = lr_bias
-
-        # pipeline vars
-        self.n_steps: int = n_steps
 
     def run_corrected_segmentation_pipeline(
         self,
@@ -270,7 +264,7 @@ class PostProcessor:
         """
 
         if self.sample_name is None:
-            self.sample_name: str = "htem" + str(
+            self.sample_name: str = "cellmap" + str(
                 hash(
                     f"FROM{os.path.join(self.affs_file, self.affs_dataset)}TO{os.path.join(self.fragments_file, self.fragments_dataset)}AT{time.strftime('%Y%m%d-%H%M%S')}".replace(
                         ".", "-"
@@ -286,6 +280,7 @@ class PostProcessor:
                 sample_name=self.sample_name,
                 affs_file=self.affs_file,
                 affs_dataset=self.affs_dataset,
+                neighborhood=self.neighborhood,
                 fragments_file=self.fragments_file,
                 fragments_dataset=self.fragments_dataset,
                 context=self.context,
@@ -299,8 +294,8 @@ class PostProcessor:
                 n_chunk_write=self.n_chunk_write_frags,
                 lr_bias_ratio=self.lr_bias_ratio,
                 adjacent_edge_bias=self.adjacent_edge_bias,
-                neighborhood_length=self.neighborhood_length,
-                mongo_port=self.mongo_port,
+                use_mongo=self.use_mongo,
+                db_host=self.db_host,
                 db_name=self.db_name,
             )
         else:
@@ -308,6 +303,7 @@ class PostProcessor:
                 sample_name=self.sample_name,
                 affs_file=self.affs_file,
                 affs_dataset=self.affs_dataset,
+                neighborhood=self.neighborhood,
                 fragments_file=self.fragments_file,
                 fragments_dataset=self.fragments_dataset,
                 context=self.context,
@@ -321,8 +317,8 @@ class PostProcessor:
                 n_chunk_write=self.n_chunk_write_frags,
                 lr_bias_ratio=self.lr_bias_ratio,
                 adjacent_edge_bias=self.adjacent_edge_bias,
-                neighborhood_length=self.neighborhood_length,
-                mongo_port=self.mongo_port,
+                use_mongo=self.use_mongo,
+                db_host=self.db_host,
                 db_name=self.db_name,
             )
 
@@ -354,7 +350,7 @@ class PostProcessor:
         """
 
         if self.sample_name is None:
-            self.sample_name: str = "htem" + str(
+            self.sample_name: str = "cellmap" + str(
                 hash(
                     f"FROM{os.path.join(self.affs_file, self.affs_dataset)}TO{os.path.join(self.fragments_file, self.fragments_dataset)}AT{time.strftime('%Y%m%d-%H%M%S')}".replace(
                         ".", "-"
@@ -366,69 +362,57 @@ class PostProcessor:
 
         success: bool = True
 
-        success = (
-            success
-            & blockwise_generate_mutex_fragments(
-                sample_name=self.sample_name,
-                affs_file=self.affs_file,
-                affs_dataset=self.affs_dataset,
-                fragments_file=self.fragments_file,
-                fragments_dataset=self.fragments_dataset,
-                context=self.context,
-                filter_val=self.filter_val,
-                seeds_file=None,
-                seeds_dataset=None,
-                mask_file=self.mask_file,
-                mask_dataset=self.mask_dataset,
-                training=False,
-                nworkers=self.nworkers_frags,
-                n_chunk_write=self.n_chunk_write_frags,
-                lr_bias_ratio=self.lr_bias_ratio,
-                adjacent_edge_bias=self.adjacent_edge_bias,
-                neighborhood_length=self.neighborhood_length,
-                mongo_port=self.mongo_port,
-                db_name=self.db_name,
-                use_mongo=self.use_mongo,
-            )
-            & self.check_finished(step=1)
+        success = success & blockwise_generate_mutex_fragments(
+            sample_name=self.sample_name,
+            affs_file=self.affs_file,
+            affs_dataset=self.affs_dataset,
+            neighborhood=self.neighborhood,
+            fragments_file=self.fragments_file,
+            fragments_dataset=self.fragments_dataset,
+            context=self.context,
+            filter_val=self.filter_val,
+            mask_file=self.mask_file,
+            mask_dataset=self.mask_dataset,
+            training=False,
+            nworkers=self.nworkers_frags,
+            n_chunk_write=self.n_chunk_write_frags,
+            lr_bias_ratio=self.lr_bias_ratio,
+            adjacent_edge_bias=self.adjacent_edge_bias,
+            use_mongo=self.use_mongo,
+            db_host=self.db_host,
+            db_name=self.db_name,
         )
-
-        success = (
-            success
-            & blockwise_generate_supervoxel_edges(
-                sample_name=self.sample_name,
-                affs_file=self.affs_file,
-                affs_dataset=self.affs_dataset,
-                fragments_file=self.fragments_file,
-                fragments_dataset=self.fragments_dataset,
-                context=self.context,
-                nworkers=self.nworkers_supervox,
-                merge_function=self.merge_function,
-                lr_bias_ratio=self.lr_bias_ratio,
-                neighborhood_length=self.neighborhood_length,
-                mongo_port=self.mongo_port,
-                db_name=self.db_name,
-                use_mongo=self.use_mongo,
-            )
-            & self.check_finished(step=2)
+        logger.info(f"blockwise generate mutex fragments {success}")
+        success = success & blockwise_generate_supervoxel_edges(
+            sample_name=self.sample_name,
+            affs_file=self.affs_file,
+            affs_dataset=self.affs_dataset,
+            neighborhood=self.neighborhood,
+            fragments_file=self.fragments_file,
+            fragments_dataset=self.fragments_dataset,
+            context=self.context,
+            mask_file=self.mask_file,
+            mask_dataset=self.mask_dataset,
+            nworkers=self.nworkers_supervox,
+            merge_function=self.merge_function,
+            lr_bias_ratio=self.lr_bias_ratio,
+            use_mongo=self.use_mongo,
+            db_host=self.db_host,
+            db_name=self.db_name,
         )
-
-        success = (
-            success
-            & global_mutex_agglomeration(
-                sample_name=self.sample_name,
-                fragments_file=self.fragments_file,
-                fragments_dataset=self.fragments_dataset,
-                merge_function=self.merge_function,
-                adj_bias=self.adj_bias,
-                lr_bias=self.lr_bias,
-                mongo_port=self.mongo_port,
-                db_name=self.db_name,
-                use_mongo=self.use_mongo,
-            )
-            & self.check_finished(step=3)
+        logger.info(f"blockwise_generate_supervoxel_edges {success}")
+        success = success & global_mutex_agglomeration(
+            sample_name=self.sample_name,
+            fragments_file=self.fragments_file,
+            fragments_dataset=self.fragments_dataset,
+            merge_function=self.merge_function,
+            adj_bias=self.adj_bias,
+            lr_bias=self.lr_bias,
+            use_mongo=self.use_mongo,
+            db_host=self.db_host,
+            db_name=self.db_name,
         )
-
+        logger.info(f"global_mutex_agglomeration {success}")
         success = success & extract_segmentation(
             fragments_file=self.fragments_file,
             fragments_dataset=self.fragments_dataset,
@@ -438,8 +422,8 @@ class PostProcessor:
             merge_function=self.merge_function,
             n_chunk_write=self.n_chunk_write_lut,
         )
-
-        return True
+        logger.info(f"extract_segmentation {success}")
+        return success
 
     def optimize_pred_segmentation(
         self,
@@ -475,7 +459,7 @@ class PostProcessor:
             seeds_file=self.seeds_file,
             seeds_dataset=self.seeds_dataset,
             sample_name=self.sample_name,
-            db_host=f"mongodb://localhost:{self.mongo_port}",
+            db_host=self.db_host,
             db_name=self.db_name,
             merge_function=self.merge_function,
             adj_bias_range=adj_bias_range,
@@ -487,8 +471,3 @@ class PostProcessor:
         )
 
         return best_biases[:5]
-
-    def check_finished(self, step: int) -> bool:
-        if step >= self.n_steps:
-            return False
-        return True

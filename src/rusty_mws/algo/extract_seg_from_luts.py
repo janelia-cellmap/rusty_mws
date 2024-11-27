@@ -16,6 +16,8 @@ def extract_segmentation(
     fragments_dataset: str,
     seg_file: str,
     seg_dataset: str,
+    mask_file=None,
+    mask_dataset=None,
     nworkers: int = 20,
     merge_function: str = "mwatershed",
     n_chunk_write: int = 1,
@@ -48,8 +50,12 @@ def extract_segmentation(
         ``integer``:
             The number of unique segment IDs in the final segmentation.
     """
+    if mask_file is not None:
+        mask: Array = open_ds(mask_file, mask_dataset, mode="r")
+    else:
+        mask = None
 
-    lut_dir: str = os.path.join(fragments_file, "luts_full")
+    lut_dir: str = os.path.join(fragments_file, f"{fragments_dataset}_luts_full")
 
     fragments: Array = open_ds(fragments_file, fragments_dataset)
 
@@ -75,6 +81,8 @@ def extract_segmentation(
         voxel_size=voxel_size,
         dtype=np.uint64,
         write_roi=write_roi,
+        write_size=chunk_shape * voxel_size,
+        force_exact_write_size=True,
         delete=True,
     )
 
@@ -98,7 +106,7 @@ def extract_segmentation(
         total_roi,
         read_roi,
         write_roi,
-        lambda b: segment_in_block(b, segmentation, fragments, lut),
+        lambda b: segment_in_block(b, segmentation, fragments, lut, mask),
         fit="shrink",
         num_workers=nworkers,
     )
@@ -111,25 +119,30 @@ def extract_segmentation(
         )
 
     logging.info(f"Took {time.time() - start} seconds to extract segmentation from LUT")
-    return num_segments
+    return True
 
 
-def segment_in_block(block: daisy.Block, segmentation, fragments, lut) -> bool:
+def segment_in_block(
+    block: daisy.Block, segmentation, fragments, lut, mask=None
+) -> bool:
     logging.info("Copying fragments to memory...")
+    if mask:
+        this_mask = mask.intersect(block.write_roi.snap_to_grid(mask.voxel_size))
+        this_mask.materialize()
+        if not np.any(this_mask):
+            return True
 
     # load fragments
     fragments: np.ndarray = fragments.to_ndarray(block.read_roi)
 
     # replace values, write to empty array
-    relabelled: np.ndarray = np.zeros_like(fragments)
+    relabelled: np.ndarray = fragments.copy()
     old_vals: np.ndarray = np.array(lut[0], dtype=np.uint64)
     new_vals: np.ndarray = np.array(lut[1], dtype=np.uint64)
     assert old_vals.dtype == new_vals.dtype == fragments.dtype
 
     logging.info("Relabelling . . .")
-    relabelled: np.ndarray = replace_values(
-        fragments, old_vals, new_vals, out_array=relabelled
-    )
+    replace_values(fragments, old_vals, new_vals, out_array=relabelled)
 
     segmentation[block.write_roi] = relabelled
     return True

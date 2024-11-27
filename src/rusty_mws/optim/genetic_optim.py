@@ -17,7 +17,7 @@ class GeneticOptimizer(OptimizerBase):
         adj_bias_range: tuple,
         lr_bias_range: tuple,
         db_host: str = "mongodb://localhost:27017",
-        db_name: str = "seg",
+        db_name: str = "mutex_watershed",
         merge_function: str = "mwatershed",
     ) -> None:
         super().__init__(

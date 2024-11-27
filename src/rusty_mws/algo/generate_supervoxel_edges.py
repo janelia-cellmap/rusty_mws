@@ -10,6 +10,7 @@ import daisy
 from funlib.geometry import Coordinate, Roi
 from funlib.persistence import open_ds, Array, graphs
 from ..utils import neighborhood
+from typing import Optional
 
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -18,15 +19,17 @@ logger: logging.Logger = logging.getLogger(__name__)
 def blockwise_generate_supervoxel_edges(
     sample_name: str,
     affs_file: str,
-    affs_dataset,
+    affs_dataset: str,
+    neighborhood: list[list[int]],
     fragments_file: str,
     fragments_dataset: str,
     context: Coordinate,
+    mask_file: str = None,
+    mask_dataset: str = None,
     nworkers: int = 20,
     merge_function: str = "mwatershed",
     lr_bias_ratio: float = -0.175,
-    neighborhood_length: int = 12,
-    mongo_port: int = 27017,
+    db_host: Optional[str] = "mongodb://localhost:27017",
     db_name: str = "seg",
     use_mongo: bool = True,
 ) -> bool:
@@ -41,6 +44,9 @@ def blockwise_generate_supervoxel_edges(
 
         affs_dataset (``str``):
             The name of the affinities dataset in the affs_file to read from.
+
+        neighborhood (``list[list[int]]``):
+            A list of lists containing the neighborhood offsets to use for the MWS algorithm.
 
         fragments_file (``str``):
             Path (relative or absolute) to the zarr file containing fragments.
@@ -60,11 +66,8 @@ def blockwise_generate_supervoxel_edges(
         lr_bias_ratio (``float``):
             Ratio at which to tweak the lr shift in offsets.
 
-        neighborhood_length (``integer``):
-            Number of neighborhood offsets to use, default is 12.
-
-        mongo_port (``integer``):
-            Port number where a MongoDB server instance is listening.
+        db_host (``string``):
+            Hostname of the MongoDB server to use at the RAG, including port number.
 
         db_name (``string``):
             Name of the specified MongoDB database to use at the RAG.
@@ -79,6 +82,11 @@ def blockwise_generate_supervoxel_edges(
     logging.info("Reading affs and fragments")
 
     affs: Array = open_ds(affs_file, affs_dataset, mode="r")
+    if mask_file is not None:
+        logger.info("Reading mask from %s", mask_file)
+        mask: Array = open_ds(mask_file, mask_dataset, mode="r")
+    else:
+        mask = None
 
     chunk_shape: tuple = affs.chunk_shape[affs.n_channel_dims :]
 
@@ -95,8 +103,6 @@ def blockwise_generate_supervoxel_edges(
 
     # open RAG DB
     if use_mongo:
-        db_host: str = f"mongodb://localhost:{mongo_port}"
-
         logging.info("Opening MongoDBGraphProvider...")
         rag_provider = graphs.MongoDbGraphProvider(
             db_name=db_name,
@@ -120,8 +126,8 @@ def blockwise_generate_supervoxel_edges(
     logging.info("Graph Provider opened")
 
     # open block done DB
-    client = pymongo.MongoClient(db_host)
-    db = client[db_name]
+    mongo_client = pymongo.MongoClient(db_host)
+    db = mongo_client[db_name]
     completed_collection_name: str = f"{sample_name}_supervox_blocks_completed"
     completed_collection = db[completed_collection_name]
 
@@ -130,6 +136,7 @@ def blockwise_generate_supervoxel_edges(
         block: daisy.Block,
         affs=affs,
         fragments=fragments,
+        mask=mask,
         rag_provider=rag_provider,
         completed_collection=completed_collection,
     ) -> tuple:
@@ -144,6 +151,12 @@ def blockwise_generate_supervoxel_edges(
         logger.info("block read roi shape: %s", block.read_roi.get_shape())
         logger.info("block write roi begin: %s", block.write_roi.get_begin())
         logger.info("block write roi shape: %s", block.write_roi.get_shape())
+
+        if mask:
+            this_mask = mask.intersect(block.write_roi.snap_to_grid(mask.voxel_size))
+            this_mask.materialize()
+            if not np.any(this_mask):
+                return True
 
         # get the sub-{affs, fragments, graph} to work on
         affs = affs.intersect(block.read_roi)
@@ -167,7 +180,9 @@ def blockwise_generate_supervoxel_edges(
         # logger.debug("fragments num: %d", n)
 
         # convert affs to float32 ndarray with values between 0 and 1
-        offsets: list[list[int]] = neighborhood[:neighborhood_length]
+        offsets: list[list[int]] = (
+            neighborhood  # TODO: fix this (i.e. make offsets or neighborhood everywhere)
+        )
 
         affs = affs.to_ndarray()
         if affs.dtype == np.uint8:
@@ -345,8 +360,12 @@ def blockwise_generate_supervoxel_edges(
         write_roi=write_roi,
         process_function=generate_super_voxel_edges_worker,
         num_workers=nworkers,
+        fit="shrink",
     )
 
     # run task blockwise
     ret: bool = daisy.run_blockwise([task])
+    if use_mongo:
+        mongo_client.close()
+        rag_provider.client.close()
     return ret

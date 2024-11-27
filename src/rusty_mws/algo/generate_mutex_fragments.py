@@ -4,6 +4,7 @@ import os
 import shutil
 import numpy as np
 from scipy.ndimage import gaussian_filter, measurements
+from typing import Optional
 
 import daisy
 import mwatershed as mws
@@ -14,7 +15,6 @@ from funlib.segment.arrays import relabel
 import pymongo
 
 from ..utils import filter_fragments
-from ..utils import neighborhood
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -23,6 +23,7 @@ def blockwise_generate_mutex_fragments(
     sample_name: str,
     affs_file: str,
     affs_dataset: str,
+    neighborhood: list[list[int]],
     fragments_file: str,
     fragments_dataset: str,
     context: Coordinate,
@@ -36,10 +37,9 @@ def blockwise_generate_mutex_fragments(
     n_chunk_write: int = 2,
     lr_bias_ratio: float = -0.175,
     adjacent_edge_bias: float = -0.4,  # bias towards merging
-    neighborhood_length: int = 12,
-    mongo_port: int = 27017,
-    db_name: str = "seg",
     use_mongo: bool = True,
+    db_host: Optional[str] = "mongodb://localhost:27017",
+    db_name: str = "mutex_watershed",
 ) -> bool:
     """Generates MWS fragments and saves nodes & weights in a RAG.
 
@@ -52,6 +52,9 @@ def blockwise_generate_mutex_fragments(
 
         affs_dataset (``str``):
             The name of the affinities dataset in the affs_file to read from.
+
+        neighborhood (``list[list[int]]``):
+            A list of lists containing the neighborhood offsets to use for MWS.
 
         fragments_file (``str``):
             Path (relative or absolute) to the zarr file to write fragments to.
@@ -81,7 +84,7 @@ def blockwise_generate_mutex_fragments(
             The name of the seeds dataset in the seeds file to read from.
 
         training (``bool``):
-            Training flag to denote wether or not to storge fragment data in MongoDB. When ``false``, used for training-only runs on SLURM clusters.
+            Training flag to denote wether or not to store fragment data in MongoDB. When ``false``, used for training-only runs on SLURM clusters.
 
         n_chunk_write (``integer``):
             Number of chunks to write for each Daisy block.
@@ -92,17 +95,14 @@ def blockwise_generate_mutex_fragments(
         adjacent_edge_bias (``float``):
             Weight base at which to bias adjacent edges.
 
-        neighborhood_length (``integer``):
-            Number of neighborhood offsets to use, default is 12.
+        use_mongo (``bool``):
+            Flag denoting whether to use a MongoDB RAG or a file-based NetworkX RAG.
 
-        mongo_port (``integer``):
-            Port number where a MongoDB server instance is listening.
+        db_host (``string``):
+            Hostname of the MongoDB server to use at the RAG, including port number.
 
         db_name (``string``):
             Name of the specified MongoDB database to use at the RAG.
-
-        use_mongo (``bool``):
-            Flag denoting whether to use a MongoDB RAG or a file-based NetworkX RAG.
 
         Returns:
             ``bool``:
@@ -125,12 +125,14 @@ def blockwise_generate_mutex_fragments(
 
     write_roi_voxels: Roi = Roi((0, 0, 0), chunk_shape * n_chunk_write)
 
-    total_roi_ds: Roi = affs.roi.grow(-context * voxel_size, -context * voxel_size)
+    total_roi_ds: Roi = affs.roi
 
-    # Make total_roi_ds and even multiple of chunk_shape
-    total_roi_ds: Roi = total_roi_ds.snap_to_grid(
-        chunk_shape * voxel_size, mode="shrink"
-    )
+    # total_roi_ds: Roi = affs.roi.grow(-context * voxel_size, -context * voxel_size)
+
+    # # Make total_roi_ds and even multiple of chunk_shape
+    # total_roi_ds: Roi = total_roi_ds.snap_to_grid(
+    #     chunk_shape * voxel_size, mode="shrink"
+    # )
 
     # Add context to total_roi_ds for daisy
     total_roi_daisy: Roi = total_roi_ds.grow(context * voxel_size, context * voxel_size)
@@ -147,6 +149,8 @@ def blockwise_generate_mutex_fragments(
         total_roi=total_roi_ds,
         voxel_size=voxel_size,
         dtype=np.uint64,
+        write_size=chunk_shape * voxel_size,
+        force_exact_write_size=True,
         delete=True,
     )
 
@@ -164,18 +168,17 @@ def blockwise_generate_mutex_fragments(
     else:
         seeds = None
 
+    mongo_client = None
     if not training:
         if use_mongo:
             # open RAG DB
-            db_host: str = f"mongodb://localhost:{mongo_port}"
+            # mongo_drop = pymongo.MongoClient(db_host)[db_name]
+            # collection_names = mongo_drop.list_collection_names()
 
-            mongo_drop = pymongo.MongoClient(db_host)[db_name]
-            collection_names = mongo_drop.list_collection_names()
-
-            for collection_name in collection_names:
-                if sample_name in collection_name:
-                    logger.info(f"Dropping {collection_name}")
-                    mongo_drop[collection_name].drop()
+            # for collection_name in collection_names:
+            #     if sample_name in collection_name:
+            #         logger.info(f"Dropping {collection_name}")
+            #         mongo_drop[collection_name].drop()
 
             logger.info("Opening MongoDBGraphProvider...")
             rag_provider = graphs.MongoDbGraphProvider(
@@ -226,6 +229,7 @@ def blockwise_generate_mutex_fragments(
         block: daisy.Block,
         affs=affs,
         seeds=seeds,
+        mask=mask,
         context=context,
         fragments_out=fragments_ds,
         rag_provider=rag_provider,
@@ -244,7 +248,13 @@ def blockwise_generate_mutex_fragments(
         logger.info("block write roi begin: %s", block.write_roi.get_begin())
         logger.info("block write roi shape: %s", block.write_roi.get_shape())
 
-        offsets: list[list[int]] = neighborhood[:neighborhood_length]
+        offsets: list[list[int]] = neighborhood  # [:neighborhood_length]
+
+        if mask:
+            this_mask = mask.intersect(block.write_roi.snap_to_grid(mask.voxel_size))
+            this_mask.materialize()
+            if not np.any(this_mask):
+                return True
 
         these_affs: Array = affs.intersect(block.read_roi)
         these_affs.materialize()
@@ -282,9 +292,11 @@ def blockwise_generate_mutex_fragments(
         logger.info("Shifting affs")
         shift: np.ndarray = np.array(
             [
-                adjacent_edge_bias
-                if max(offset) <= 1
-                else np.linalg.norm(offset) * lr_bias_ratio
+                (
+                    adjacent_edge_bias
+                    if max(offset) <= 1
+                    else np.linalg.norm(offset) * lr_bias_ratio
+                )
                 for offset in offsets
             ]
         ).reshape((-1, *((1,) * (len(these_affs.data.shape) - 1))))
@@ -401,4 +413,8 @@ def blockwise_generate_mutex_fragments(
     logger.info("Running task blockwise . . .")
     # run task blockwise
     ret: bool = daisy.run_blockwise(tasks=[task])
+    if mongo_client:
+        rag_provider.client.close()
+        mongo_client.close()
+
     return ret

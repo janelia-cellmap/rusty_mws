@@ -1,12 +1,12 @@
 import logging
 import os
 import time
+from typing import Optional
 
 import numpy as np
 import mwatershed as mws
 from funlib.geometry import Roi
 from funlib.persistence import open_ds, graphs, Array
-
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -18,9 +18,9 @@ def global_mutex_agglomeration(
     merge_function: str = "mwatershed",
     adj_bias: float = 0.1,
     lr_bias: float = -1.2,
-    mongo_port: int = 27017,
-    db_name: str = "seg",
     use_mongo: bool = True,
+    db_host: Optional[str] = "mongodb://localhost:27017",
+    db_name: str = "mutex_watershed",
 ) -> bool:
     """Performs global agglomeration on stored MWS fragments, writing new segment IDs into a LUT for relabeling.
 
@@ -43,8 +43,8 @@ def global_mutex_agglomeration(
         lr_bias (``float``):
             Amount to bias long-range pixel weights when computing segmentation from the stored graph.
 
-        mongo_port (``integer``):
-            Port number where a MongoDB server instance is listening.
+        db_host (``str``):
+            Hostname of the MongoDB server to use at the RAG.
 
         db_name (``string``):
             Name of the specified MongoDB database to use at the RAG.
@@ -57,7 +57,6 @@ def global_mutex_agglomeration(
             Returns ``true`` if all Daisy tasks complete successfully.
     """
     if use_mongo:
-        db_host: str = f"mongodb://localhost:{mongo_port}"
         print("Reading graph from DB ", db_name)
         start: float = time.time()
 
@@ -99,8 +98,11 @@ def global_mutex_agglomeration(
     if graph.number_of_nodes == 0:
         print("No nodes found in roi %s" % roi)
         return
+
     nodes: np.ndarray = np.array(graph.nodes)
-    edges: np.ndarray = np.stack(list(graph.edges), axis=0)
+    edges: np.ndarray = (
+        np.stack(list(graph.edges), axis=0) if graph.edges else np.array([])
+    )
     adj_scores: np.ndarray = np.array(
         [graph.edges[tuple(e)]["adj_weight"] for e in edges]
     ).astype(np.float32)
@@ -110,7 +112,7 @@ def global_mutex_agglomeration(
 
     print("Complete RAG contains %d nodes, %d edges" % (len(nodes), len(edges)))
 
-    out_dir: str = os.path.join(fragments_file, "luts_full")
+    out_dir: str = os.path.join(fragments_file, f"{fragments_dataset}_luts_full")
 
     os.makedirs(out_dir, exist_ok=True)
 
@@ -125,6 +127,9 @@ def global_mutex_agglomeration(
         adj_bias=adj_bias,
         lr_bias=lr_bias,
     )
+
+    if use_mongo:
+        graph_provider.client.close()
 
     print("Created and stored lookup tables in %.3fs" % (time.time() - start))
     return True
@@ -179,9 +184,12 @@ def segment(
         reverse=True,
     )
     edges = [(bool(aff > 0), u, v) for aff, u, v in edges]
-    lut = mws.cluster(edges)
-    inputs, outputs = zip(*lut)
-
+    if edges:
+        lut = mws.cluster(edges)
+        inputs, outputs = zip(*lut)
+    else:
+        inputs = np.array([], dtype=np.uint64)
+        outputs = np.array([], dtype=np.uint64)
     start: float = time.time()
     print("%.3fs" % (time.time() - start))
 
